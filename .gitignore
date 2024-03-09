@@ -1,0 +1,6 @@
+# rust
+/target
+
+# perf and flamegraph
+perf.data*
+flamegraph.svg
