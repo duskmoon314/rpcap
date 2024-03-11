@@ -180,8 +180,10 @@ impl_underlay!(3, 5, 6, 7);
 pub trait Endianness {}
 
 /// Most significant byte first (big-endian)
+#[derive(Debug, Clone, Copy)]
 pub struct Msb;
 /// Least significant byte first (little-endian)
+#[derive(Debug, Clone, Copy)]
 pub struct Lsb;
 
 impl Endianness for Msb {}
@@ -221,6 +223,7 @@ macro_rules! field_spec {
     ($name: ident, $t:ty, $u:ty) => {
         #[doc = stringify!($name)]
         // TODO: Add documentation
+        #[derive(Debug, Clone, Copy)]
         pub struct $name;
         impl $crate::utils::field::FieldSpec for $name {
             type T = $t;
@@ -232,6 +235,7 @@ macro_rules! field_spec {
     ($name: ident, $t:ty, $u:ty, $m:expr) => {
         #[doc = stringify!($name)]
         // TODO: Add documentation
+        #[derive(Debug, Clone, Copy)]
         pub struct $name;
         impl $crate::utils::field::FieldSpec for $name {
             type T = $t;
@@ -244,6 +248,7 @@ macro_rules! field_spec {
     ($name: ident, $t:ty, $u:ty, $m:expr, $s:expr) => {
         #[doc = stringify!($name)]
         // TODO: Add documentation
+        #[derive(Debug, Clone, Copy)]
         pub struct $name;
         impl $crate::utils::field::FieldSpec for $name {
             type T = $t;
@@ -259,12 +264,21 @@ macro_rules! field_spec {
 #[repr(transparent)]
 pub struct Field<F: FieldSpec, E: Endianness = Msb> {
     value: F::U,
-    _marker_t: std::marker::PhantomData<F::T>,
-    _marker_e: std::marker::PhantomData<E>,
+    _marker: std::marker::PhantomData<(F::T, E)>,
+}
+
+impl<F: FieldSpec, E: Endianness> Field<F, E> {
+    /// Get the inner value without any operations and conversions
+    pub fn into_inner(self) -> F::U {
+        self.value
+    }
 }
 
 impl<F: FieldSpec> Field<F, Msb> {
     /// Get the **raw** value of the field
+    ///
+    /// **Note**: raw here means the mask and shift are applied but the value is
+    /// not converted to the target type.
     pub fn raw(&self) -> F::U {
         if F::MASK == u64::MAX && F::SHIFT == 0 {
             F::U::from_be(self.value)
@@ -285,14 +299,12 @@ impl<F: FieldSpec> Field<F, Msb> {
         if F::MASK == u64::MAX && F::SHIFT == 0 {
             self.value = value.into_underlay().to_be();
         } else if F::SHIFT == 0 {
-            self.value = self
-                .value
+            self.value = F::U::from_be(self.value)
                 .mask(!F::MASK)
                 .bitor(value.into_underlay())
                 .to_be();
         } else {
-            self.value = self
-                .value
+            self.value = F::U::from_be(self.value)
                 .mask(!F::MASK)
                 .bitor(value.into_underlay().shl(F::SHIFT))
                 .to_be();
@@ -302,6 +314,9 @@ impl<F: FieldSpec> Field<F, Msb> {
 
 impl<F: FieldSpec> Field<F, Lsb> {
     /// Get the **raw** value of the field
+    ///
+    /// **Note**: raw here means the mask and shift are applied but the value is
+    /// not converted to the target type.
     pub fn raw(&self) -> F::U {
         if F::MASK == u64::MAX && F::SHIFT == 0 {
             F::U::from_le(self.value)
@@ -322,17 +337,55 @@ impl<F: FieldSpec> Field<F, Lsb> {
         if F::MASK == u64::MAX && F::SHIFT == 0 {
             self.value = value.into_underlay().to_le();
         } else if F::SHIFT == 0 {
-            self.value = self
-                .value
+            self.value = F::U::from_le(self.value)
                 .mask(!F::MASK)
                 .bitor(value.into_underlay())
                 .to_le();
         } else {
-            self.value = self
-                .value
+            self.value = F::U::from_le(self.value)
                 .mask(!F::MASK)
                 .bitor(value.into_underlay().shl(F::SHIFT))
                 .to_le();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_field() {
+        field_spec!(TestField, u16, u16, 0x0F00, 8);
+
+        let mut field = Field::<TestField> {
+            value: 0,
+            _marker: std::marker::PhantomData,
+        };
+        assert_eq!(field.raw(), 0);
+        assert_eq!(field.get(), 0);
+        field.set(0x0F);
+        assert_eq!(field.into_inner(), 0x000F);
+        assert_eq!(field.raw(), 0x000F);
+        assert_eq!(field.get(), 0x0F);
+        field.set(0x0A);
+        assert_eq!(field.into_inner(), 0x000A);
+        assert_eq!(field.raw(), 0x000A);
+        assert_eq!(field.get(), 0x0A);
+
+        let mut field = Field::<TestField, Lsb> {
+            value: 0,
+            _marker: std::marker::PhantomData,
+        };
+        assert_eq!(field.raw(), 0);
+        assert_eq!(field.get(), 0);
+        field.set(0x0F);
+        assert_eq!(field.into_inner(), 0x0F00);
+        assert_eq!(field.raw(), 0x000F);
+        assert_eq!(field.get(), 0x0F);
+        field.set(0x0A);
+        assert_eq!(field.into_inner(), 0x0A00);
+        assert_eq!(field.raw(), 0x000A);
+        assert_eq!(field.get(), 0x0A);
     }
 }

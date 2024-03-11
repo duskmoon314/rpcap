@@ -1,4 +1,4 @@
-//! Layer types
+//! Various layers
 //!
 //! This module provides types for the various layers of the packet.
 

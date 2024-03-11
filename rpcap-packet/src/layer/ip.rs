@@ -2,15 +2,17 @@
 //!
 //! This module provides types for working with the IP layer.
 
-pub mod v4;
-
-pub use v4::Ipv4;
-
 use num_enum::{FromPrimitive, IntoPrimitive};
+use strum::{Display, EnumString};
+
+pub mod v4;
+pub use v4::Ipv4;
 
 /// IP protocol number.
 #[allow(missing_docs)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, FromPrimitive, IntoPrimitive)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, FromPrimitive, IntoPrimitive, Display, EnumString,
+)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum IpProtocol {
@@ -308,4 +310,10 @@ pub enum IpProtocol {
 
     #[num_enum(catch_all)]
     Unsupported(u8),
+}
+
+impl Default for IpProtocol {
+    fn default() -> Self {
+        IpProtocol::Unsupported(0xFF)
+    }
 }

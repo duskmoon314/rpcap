@@ -5,13 +5,13 @@
 use std::{fmt::Display, str::FromStr};
 
 /// Error type for `MacAddr`
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum MacAddrError {
     /// Invalid octet
     ///
     /// This error is returned when an octet is not a valid hexadecimal number.
-    #[error("Invalid octet")]
-    InvalidMacAddr(#[from] core::num::ParseIntError),
+    #[error("Invalid octet, expected a hexadecimal number, got {0}")]
+    InvalidOctetAddr(#[from] core::num::ParseIntError),
 
     /// Invalid length
     ///
@@ -34,17 +34,25 @@ pub struct MacAddr {
 /// ```
 /// # use rpcap_packet::mac_addr;
 /// # use rpcap_packet::mac_addr::MacAddr;
-/// let mac = mac_addr!("00:11:22:33:44:55");
+/// #
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// #
+/// let mac = mac_addr!("00:11:22:33:44:55")?;
 /// assert_eq!(mac, MacAddr::new(0x00, 0x11, 0x22, 0x33, 0x44, 0x55));
+/// #
+/// #     Ok(())
+/// # }
 /// ```
 #[macro_export]
 macro_rules! mac_addr {
     ($l: literal) => {
-        $l.parse::<$crate::mac_addr::MacAddr>().unwrap()
+        $l.parse::<$crate::mac_addr::MacAddr>()
     };
 
     ($($octet:expr),*) => {
-        $crate::mac_addr::MacAddr::new($($octet),*)
+        || -> Result<$crate::mac_addr::MacAddr, $crate::mac_addr::MacAddrError> {
+            Ok($crate::mac_addr::MacAddr::new($($octet),*))
+        }()
     };
 }
 
@@ -99,26 +107,30 @@ impl From<MacAddr> for [u8; 6] {
 }
 
 impl FromStr for MacAddr {
-    type Err = Error;
+    type Err = MacAddrError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let octets = s
             .split(':')
             .map(|hex| u8::from_str_radix(hex, 16))
             .collect::<Result<Vec<u8>, core::num::ParseIntError>>()
-            .map_err(Error::InvalidMacAddr)?
+            .map_err(MacAddrError::InvalidOctetAddr)?
             .try_into()
-            .map_err(|e: Vec<u8>| Error::InvalidLength(e.len()))?;
+            .map_err(|e: Vec<u8>| MacAddrError::InvalidLength(e.len()))?;
         Ok(Self { octets })
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use anyhow::Result;
+
     #[test]
-    fn test_mac_addr() {
-        let mac = mac_addr!(0x00, 0x11, 0x22, 0x33, 0x44, 0x55);
+    fn test_mac_addr() -> Result<()> {
+        let mac = mac_addr!(0x00, 0x11, 0x22, 0x33, 0x44, 0x55)?;
         assert_eq!(mac.to_string(), "00:11:22:33:44:55");
-        assert_eq!(mac, mac_addr!("00:11:22:33:44:55"));
+        assert_eq!(mac, mac_addr!("00:11:22:33:44:55")?);
+
+        Ok(())
     }
 }

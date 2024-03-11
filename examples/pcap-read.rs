@@ -15,9 +15,13 @@ fn main() {
     // Loop through the packets and print them to stdout
     for pkt in cap.iter(codec) {
         let eth = match pkt {
-            Ok(eth) => eth,
+            Ok(Ok(eth)) => eth,
+            Ok(Err(e)) => {
+                println!("rpcap error: {:?}", e);
+                continue;
+            }
             Err(e) => {
-                println!("Error: {:?}", e);
+                println!("pcap error: {:?}", e);
                 continue;
             }
         };

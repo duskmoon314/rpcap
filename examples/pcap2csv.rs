@@ -63,7 +63,7 @@ fn main() -> anyhow::Result<()> {
         let ts = pkt.header.ts.tv_sec * 1000000 + pkt.header.ts.tv_usec;
 
         // Get the ipv4 layer
-        let eth = Eth::new(pkt.data);
+        let eth = Eth::new(pkt.data)?;
         let ipv4 = match eth.ipv4() {
             Some(ipv4) => ipv4,
             None => continue,

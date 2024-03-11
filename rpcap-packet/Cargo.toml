@@ -7,4 +7,9 @@ edition = "2021"
 
 [dependencies]
 num_enum = "0.7.2"
+paste = "1.0.14"
+strum = { version = "0.26.2", features = ["derive", "phf"] }
 thiserror = "1.0.57"
+
+[dev-dependencies]
+anyhow = "1.0.80"
