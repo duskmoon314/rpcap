@@ -65,8 +65,8 @@ fn main() -> anyhow::Result<()> {
         // Get the ipv4 layer
         let eth = Eth::new(pkt.data)?;
         let ipv4 = match eth.ipv4() {
-            Some(ipv4) => ipv4,
-            None => continue,
+            Some(Ok(ipv4)) => ipv4,
+            _ => continue,
         };
 
         let row = Row {

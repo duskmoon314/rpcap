@@ -25,7 +25,7 @@ fn main() {
                 continue;
             }
         };
-        if let Some(ipv4) = eth.ipv4() {
+        if let Some(Ok(ipv4)) = eth.ipv4() {
             println!(
                 "Eth {} -> {} {:?}",
                 eth.src().get(),

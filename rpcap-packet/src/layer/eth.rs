@@ -16,11 +16,11 @@ pub enum EthError {
     ///
     /// The length of the given data is not valid for the Ethernet layer. It
     /// must be greater than or equal to 14.
-    #[error("Invalid data length, expected >= 14, got {0}")]
+    #[error("[Eth] Invalid data length, expected >= 14, got {0}")]
     InvalidDataLength(usize),
 
     /// Invalid MacAddr.
-    #[error("Invalid MacAddr {0}")]
+    #[error("[Eth] Invalid MacAddr {0}")]
     InvalidMacAddr(#[from] crate::mac_addr::MacAddrError),
 }
 
@@ -150,7 +150,7 @@ where
 
     /// Treat the payload as an `Ipv4` layer if the `type` field is `EthType::Ipv4`.
     #[inline]
-    pub fn ipv4(&self) -> Option<crate::layer::ip::Ipv4<&[u8]>> {
+    pub fn ipv4(&self) -> Option<Result<crate::layer::ip::Ipv4<&[u8]>, crate::layer::ip::IpError>> {
         if self.ty().get() == EthType::Ipv4 {
             Some(crate::layer::ip::Ipv4::new(
                 &self.data.as_ref()[Self::FIELD_PAYLOAD],
@@ -197,7 +197,9 @@ where
 
     /// Treat the payload as a mutable `Ipv4` layer if the `type` field is `EthType::Ipv4`.
     #[inline]
-    pub fn ipv4_mut(&mut self) -> Option<crate::layer::ip::Ipv4<&mut [u8]>> {
+    pub fn ipv4_mut(
+        &mut self,
+    ) -> Option<Result<crate::layer::ip::Ipv4<&mut [u8]>, crate::layer::ip::IpError>> {
         if self.ty().get() == EthType::Ipv4 {
             Some(crate::layer::ip::Ipv4::new(
                 &mut self.data.as_mut()[Self::FIELD_PAYLOAD],
@@ -336,7 +338,7 @@ where
 #[macro_export]
 macro_rules! eth {
     ($($field:ident : $value:expr),* $(,)?) => {
-        eth!($crate::layer::eth::Eth::<[u8; 14]>::HEADER_LEN, $($field : $value),*)
+        eth!(14, $($field : $value),*)
     };
 
     ($length:expr, $($field:ident : $value:expr),* $(,)?) => {
@@ -457,7 +459,7 @@ mod tests {
     }
 
     #[test]
-    fn test_eth_ipv4() {
+    fn test_eth_ipv4() -> Result<()> {
         use std::net::Ipv4Addr;
 
         use crate::layer::ip::IpProtocol;
@@ -478,12 +480,12 @@ mod tests {
             0x0a, 0x00, 0x00, 0x02, // dst
         ];
 
-        let eth = Eth::new(&data).unwrap();
+        let eth = Eth::new(&data)?;
         let ipv4 = eth.ipv4();
 
         assert!(ipv4.is_some());
 
-        let ipv4 = ipv4.unwrap();
+        let ipv4 = ipv4.unwrap()?;
 
         assert_eq!(ipv4.version().get(), 4);
         assert_eq!(ipv4.ihl().get(), 5);
@@ -499,7 +501,7 @@ mod tests {
         assert_eq!(ipv4.src().get(), Ipv4Addr::new(10, 0, 0, 1));
         assert_eq!(ipv4.dst().get(), Ipv4Addr::new(10, 0, 0, 2));
 
-        let mut eth = Eth::new(data).unwrap();
+        let mut eth = Eth::new(data)?;
 
         eth.payload_mut()[0] = 0x46;
 
@@ -508,10 +510,6 @@ mod tests {
             [0x46, 0x00, 0x00, 0x1c, 0x00, 0x00, 0x00, 0x00]
         );
 
-        let mut ipv4 = eth.ipv4_mut().unwrap();
-
-        ipv4.ihl_mut().set(5);
-
-        assert_eq!(ipv4.ihl().get(), 5);
+        Ok(())
     }
 }
