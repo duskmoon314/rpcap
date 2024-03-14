@@ -2,7 +2,7 @@
 //!
 //! This module provides [`Ipv4`] to represent and operate Ipv4 packets.
 
-use crate::{field_spec, utils::field::Field};
+use crate::{field_spec, impl_target, utils::field::Field};
 
 use super::{IpError, IpProtocol};
 
@@ -41,6 +41,8 @@ where
 {
     data: T,
 }
+
+impl_target!(frominto, std::net::Ipv4Addr, u32);
 
 field_spec!(VersionSpec, u8, u8, 0xF0, 4);
 field_spec!(IhlSpec, u8, u8, 0x0F);
@@ -215,6 +217,28 @@ impl<T: AsRef<[u8]>> Ipv4<T> {
         let ihl = self.ihl().get() as usize * 4;
         &self.data.as_ref()[ihl..]
     }
+
+    /// Treat the payload as a [`Tcp`](crate::layer::tcp::Tcp) layer if the `protocol` is [`IpProtocol::Tcp`].
+    #[inline]
+    pub fn tcp(&self) -> Option<crate::layer::tcp::TcpResult<crate::layer::tcp::Tcp<&[u8]>>> {
+        if self.protocol().get() == IpProtocol::Tcp {
+            Some(crate::layer::tcp::Tcp::new(self.payload()))
+        } else {
+            None
+        }
+    }
+
+    /// Treat the payload as a [`Udp`](crate::layer::udp::Udp) layer if the `protocol` is [`IpProtocol::Udp`].
+    #[inline]
+    pub fn udp(
+        &self,
+    ) -> Option<Result<crate::layer::udp::Udp<&[u8]>, crate::layer::udp::UdpError>> {
+        if self.protocol().get() == IpProtocol::Udp {
+            Some(crate::layer::udp::Udp::new(self.payload()))
+        } else {
+            None
+        }
+    }
 }
 
 impl<T: AsRef<[u8]> + AsMut<[u8]>> Ipv4<T> {
@@ -293,6 +317,18 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Ipv4<T> {
     pub fn payload_mut(&mut self) -> &mut [u8] {
         let ihl = self.ihl().get() as usize * 4;
         &mut self.data.as_mut()[ihl..]
+    }
+
+    /// Treat the payload as a mutable [`Udp`](crate::layer::udp::Udp) layer if the `protocol` is [`IpProtocol::Udp`].
+    #[inline]
+    pub fn udp_mut(
+        &mut self,
+    ) -> Option<Result<crate::layer::udp::Udp<&mut [u8]>, crate::layer::udp::UdpError>> {
+        if self.protocol().get() == IpProtocol::Udp {
+            Some(crate::layer::udp::Udp::new(self.payload_mut()))
+        } else {
+            None
+        }
     }
 }
 

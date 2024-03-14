@@ -4,6 +4,8 @@
 
 use std::{fmt::Display, str::FromStr};
 
+use crate::impl_target;
+
 /// Error type for `MacAddr`
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum MacAddrError {
@@ -105,6 +107,8 @@ impl From<MacAddr> for [u8; 6] {
         mac.octets
     }
 }
+
+impl_target!(frominto, MacAddr, [u8; 6]);
 
 impl FromStr for MacAddr {
     type Err = MacAddrError;

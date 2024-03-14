@@ -1,6 +1,8 @@
 use num_enum::{FromPrimitive, IntoPrimitive};
 use strum::{Display, EnumString};
 
+use crate::impl_target;
+
 /// Ethernet type enum.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, FromPrimitive, IntoPrimitive, Display, EnumString,
@@ -21,6 +23,8 @@ pub enum EthType {
     #[num_enum(catch_all)]
     Unsupported(u16),
 }
+
+impl_target!(frominto, EthType, u16);
 
 #[cfg(test)]
 mod tests {

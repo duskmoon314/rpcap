@@ -8,6 +8,8 @@ use strum::{Display, EnumString};
 pub mod v4;
 pub use v4::Ipv4;
 
+use crate::impl_target;
+
 /// Error type for Ip layer.
 #[derive(Debug, Clone, thiserror::Error)]
 #[non_exhaustive]
@@ -347,3 +349,5 @@ impl Default for IpProtocol {
         IpProtocol::Unsupported(0xFF)
     }
 }
+
+impl_target!(frominto, IpProtocol, u8);

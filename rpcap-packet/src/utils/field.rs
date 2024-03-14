@@ -13,15 +13,83 @@ pub trait Target<U> {
     fn into_underlay(self) -> U;
 }
 
-impl<T, U> Target<U> for T
-where
-    T: From<U> + Into<U>,
-{
-    fn from_underlay(x: U) -> Self {
-        x.into()
+/// Implement the Target trait for given types
+///
+/// # Arguments
+///
+/// - `option`: The conversion option, currently supported options are:
+///   - `frominto`: Implement `from_underlay` and `into_underlay` using `From` and `Into`
+///   - `as`: Implement `from_underlay` and `into_underlay` using `as`
+/// - `t`: The target type
+/// - `u`: The underlay type
+///
+/// # Example
+///
+/// ```
+/// # use rpcap_packet::impl_target;
+/// # use rpcap_packet::utils::field::Target;
+///
+/// struct MyU8(u8);
+/// impl From<u8> for MyU8 {
+///     fn from(x: u8) -> Self {
+///         MyU8(x)
+///     }
+/// }
+/// impl Into<u8> for MyU8 {
+///     fn into(self) -> u8 {
+///         self.0
+///     }
+/// }
+///
+/// impl_target!(frominto, MyU8, u8);
+///
+/// let x = MyU8::from_underlay(0x0F);
+/// assert_eq!(x.0, 0x0F);
+/// let y = x.into_underlay();
+/// assert_eq!(y, 0x0F);
+/// ```
+#[macro_export]
+macro_rules! impl_target {
+    (frominto, $t: ty, $u: ty) => {
+        impl $crate::utils::field::Target<$u> for $t {
+            fn from_underlay(x: $u) -> Self {
+                x.into()
+            }
+            fn into_underlay(self) -> $u {
+                self.into()
+            }
+        }
+    };
+
+    (as, $t: ty, $u: ty) => {
+        impl $crate::utils::field::Target<$u> for $t {
+            fn from_underlay(x: $u) -> Self {
+                x as Self
+            }
+            fn into_underlay(self) -> $u {
+                self as $u
+            }
+        }
+    };
+}
+
+impl_target!(frominto, u8, u8);
+impl_target!(frominto, u16, u16);
+impl_target!(frominto, u32, u32);
+impl_target!(frominto, u64, u64);
+impl_target!(as, u8, u16);
+impl_target!(as, u8, u32);
+impl_target!(as, u8, u64);
+impl_target!(as, u16, u32);
+impl_target!(as, u16, u64);
+impl_target!(as, u32, u64);
+
+impl Target<u8> for bool {
+    fn from_underlay(x: u8) -> Self {
+        x != 0
     }
-    fn into_underlay(self) -> U {
-        self.into()
+    fn into_underlay(self) -> u8 {
+        self as u8
     }
 }
 

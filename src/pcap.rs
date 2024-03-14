@@ -1,3 +1,5 @@
+pub use pcap;
+
 use pcap::PacketCodec;
 
 use crate::packet::layer::eth::{Eth, EthError};
