@@ -12,3 +12,4 @@ csv = { workspace = true }
 ipnet = { version = "2.9.0", features = ["serde"] }
 rpcap = { workspace = true }
 serde = { workspace = true }
+tqdm = "0.6.0"

@@ -2,8 +2,12 @@ use std::{net::Ipv4Addr, path::PathBuf};
 
 use anyhow::Result;
 use clap::Parser;
-use rpcap::{packet::layer::eth::Eth, pcap::pcap};
+use rpcap::{
+    packet::layer::eth::{Eth, EthError},
+    pcap::pcap::{self, Error as PcapError, Offline, PacketCodec, PacketIter},
+};
 use serde::{Deserialize, Serialize};
+use tqdm::Iter;
 
 /// pcap2csv: A simple example that reads a pcap file and writes a csv file.
 ///
@@ -53,6 +57,32 @@ struct Row {
     tcp_flags: u8,
 }
 
+struct Codec;
+
+impl PacketCodec for Codec {
+    type Item = (pcap::PacketHeader, Result<Eth<Box<[u8]>>, EthError>);
+
+    fn decode(&mut self, packet: pcap::Packet<'_>) -> Self::Item {
+        (*packet.header, Eth::new(packet.data.into()))
+    }
+}
+
+// Wrap PacketIter to add size_hint
+struct WrapIter(PacketIter<Offline, Codec>, usize);
+
+impl Iterator for WrapIter {
+    type Item = Result<<Codec as PacketCodec>::Item, PcapError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let (lo, hi) = self.0.size_hint();
+        (lo, hi.or(Some(self.1)))
+    }
+}
+
 fn main() -> Result<()> {
     let args = Cli::parse();
 
@@ -67,14 +97,32 @@ fn main() -> Result<()> {
 
     let mut output = csv::Writer::from_path(output)?;
 
+    // Approximate the total number of packets
+    let cap_len = {
+        let cap = std::fs::File::open(&args.input)?;
+        cap.metadata()?.len() as usize
+    };
+    let total = cap_len / 96;
+
     // Open the pcap file
-    let mut cap = pcap::Capture::from_file(args.input)?;
+    let cap = pcap::Capture::from_file(args.input)?;
 
-    'outer: while let Ok(pkt) = cap.next_packet() {
-        let ts = pkt.header.ts.tv_sec * 1000000 + pkt.header.ts.tv_usec;
-        let len = pkt.header.len;
+    let codec = Codec;
+    let iter = WrapIter(cap.iter(codec), total);
 
-        match Eth::new(pkt.data) {
+    'outer: for pkt in iter.tqdm() {
+        let (hdr, eth) = match pkt {
+            Ok((hdr, pkt)) => (hdr, pkt),
+            Err(err) => {
+                eprintln!("{}", err);
+                continue;
+            }
+        };
+
+        let ts = hdr.ts.tv_sec * 1000000 + hdr.ts.tv_usec;
+        let len = hdr.len;
+
+        match eth {
             Ok(eth) => match eth.ipv4() {
                 None => continue,
                 Some(Ok(ipv4)) => {
