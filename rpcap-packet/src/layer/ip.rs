@@ -10,36 +10,6 @@ pub use v4::Ipv4;
 
 use crate::impl_target;
 
-/// Error type for Ip layer.
-#[derive(Debug, Clone, thiserror::Error)]
-#[non_exhaustive]
-pub enum IpError {
-    /// Invalid data length.
-    ///
-    /// This error occurs when the length of the data is shorter than the minimal length or the `ihl` field.
-    #[error("[Ip] Invalid data length: expected {expected}, actual {actual}")]
-    InvalidDataLength {
-        /// Expected length.
-        ///
-        /// This is the minimal length or the `ihl` field.
-        expected: usize,
-        /// Actual length.
-        actual: usize,
-    },
-
-    /// Invalid Version
-    ///
-    /// This error only occurs in Ipv4, when the `version` field is not 4.
-    #[error("[Ip] Invalid Version: expected 4, actual {0}")]
-    InvalidVersion(u8),
-
-    /// Invalid Header Length.
-    ///
-    /// This error only occurs in Ipv4, when the `ihl` field is less than 5.
-    #[error("[Ip] Invalid Header Length: expected 5, actual {0}")]
-    InvalidIhl(u8),
-}
-
 /// IP protocol number.
 #[allow(missing_docs)]
 #[derive(

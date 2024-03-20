@@ -2,9 +2,57 @@
 //!
 //! This module provides [`Ipv4`] to represent and operate Ipv4 packets.
 
-use crate::{field_spec, impl_target, utils::field::Field};
+use rpcap_impl::layer;
 
-use super::{IpError, IpProtocol};
+use crate::{field_spec, impl_target};
+
+use super::IpProtocol;
+
+/// Error type for Ipv4 layer.
+#[derive(Debug, Clone, thiserror::Error)]
+#[non_exhaustive]
+pub enum Ipv4Error {
+    /// Invalid data length.
+    ///
+    /// This error occurs when the length of the data is shorter than the minimal length or the `ihl` field.
+    #[error("[Ip] Invalid data length: expected {expected}, actual {actual}")]
+    InvalidDataLength {
+        /// Expected length.
+        ///
+        /// This is the minimal length or the `ihl` field.
+        expected: usize,
+        /// Actual length.
+        actual: usize,
+    },
+
+    /// Invalid Version
+    ///
+    /// This error only occurs in Ipv4, when the `version` field is not 4.
+    #[error("[Ip] Invalid Version: expected 4, actual {0}")]
+    InvalidVersion(u8),
+
+    /// Invalid Header Length.
+    ///
+    /// This error only occurs in Ipv4, when the `ihl` field is less than 5.
+    #[error("[Ip] Invalid Header Length: expected 5, actual {0}")]
+    InvalidIhl(u8),
+}
+
+impl_target!(frominto, std::net::Ipv4Addr, u32);
+
+field_spec!(VersionSpec, u8, u8, 0xF0, 4);
+field_spec!(IhlSpec, u8, u8, 0x0F);
+field_spec!(DscpSpec, u8, u8, 0xFC, 2);
+field_spec!(EcnSpec, u8, u8, 0x03);
+field_spec!(TotalLengthSpec, u16, u16);
+field_spec!(IdentificationSpec, u16, u16);
+field_spec!(FlagsSpec, u8, u8, 0xE0, 5);
+field_spec!(FragmentOffsetSpec, u16, u16, 0x1FFF);
+field_spec!(TtlSpec, u8, u8);
+field_spec!(ProtocolSpec, IpProtocol, u8, 0xFF);
+field_spec!(ChecksumSpec, u16, u16);
+field_spec!(SrcSpec, std::net::Ipv4Addr, u32);
+field_spec!(DstSpec, std::net::Ipv4Addr, u32);
 
 /// Ipv4 layer
 ///
@@ -34,193 +82,83 @@ use super::{IpError, IpProtocol};
 /// #     Ok(())
 /// # }
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct Ipv4<T>
-where
-    T: AsRef<[u8]>,
-{
-    data: T,
+#[layer]
+pub struct Ipv4 {
+    #[layer(range = 0..1)]
+    version: VersionSpec,
+    #[layer(range = 0..1)]
+    ihl: IhlSpec,
+    #[layer(range = 1..2)]
+    dscp: DscpSpec,
+    #[layer(range = 1..2)]
+    ecn: EcnSpec,
+    #[layer(range = 2..4)]
+    total_length: TotalLengthSpec,
+    #[layer(range = 4..6)]
+    identification: IdentificationSpec,
+    #[layer(range = 6..7)]
+    flags: FlagsSpec,
+    #[layer(range = 6..8)]
+    fragment_offset: FragmentOffsetSpec,
+    #[layer(range = 8..9)]
+    ttl: TtlSpec,
+    #[layer(range = 9..10)]
+    protocol: ProtocolSpec,
+    #[layer(range = 10..12)]
+    checksum: ChecksumSpec,
+    #[layer(range = 12..16)]
+    src: SrcSpec,
+    #[layer(range = 16..20)]
+    dst: DstSpec,
+    #[layer(range = self.ihl().get() as usize * 4..)]
+    payload: [u8],
 }
 
-impl_target!(frominto, std::net::Ipv4Addr, u32);
-
-field_spec!(VersionSpec, u8, u8, 0xF0, 4);
-field_spec!(IhlSpec, u8, u8, 0x0F);
-field_spec!(DscpSpec, u8, u8, 0xFC, 2);
-field_spec!(EcnSpec, u8, u8, 0x03);
-field_spec!(TotalLengthSpec, u16, u16);
-field_spec!(IdentificationSpec, u16, u16);
-field_spec!(FlagsSpec, u8, u8, 0xE0, 5);
-field_spec!(FragmentOffsetSpec, u16, u16, 0x1FFF);
-field_spec!(TtlSpec, u8, u8);
-field_spec!(ProtocolSpec, IpProtocol, u8, 0xFF);
-field_spec!(ChecksumSpec, u16, u16);
-field_spec!(SrcSpec, std::net::Ipv4Addr, u32);
-field_spec!(DstSpec, std::net::Ipv4Addr, u32);
-
 impl<T: AsRef<[u8]>> Ipv4<T> {
-    /// Byte range of `version` field
-    pub const FIELD_VERSION: std::ops::Range<usize> = 0..1;
-    /// Byte range of `ihl` field
-    pub const FIELD_IHL: std::ops::Range<usize> = 0..1;
-    /// Byte range of `dscp` field
-    pub const FIELD_DSCP: std::ops::Range<usize> = 1..2;
-    /// Byte range of `ecn` field
-    pub const FIELD_ECN: std::ops::Range<usize> = 1..2;
-    /// Byte range of `total_length` field
-    pub const FIELD_TOTAL_LENGTH: std::ops::Range<usize> = 2..4;
-    /// Byte range of `identification` field
-    pub const FIELD_IDENTIFICATION: std::ops::Range<usize> = 4..6;
-    /// Byte range of `flags` field
-    pub const FIELD_FLAGS: std::ops::Range<usize> = 6..7;
-    /// Byte range of `fragment_offset` field
-    pub const FIELD_FRAGMENT_OFFSET: std::ops::Range<usize> = 6..8;
-    /// Byte range of `ttl` field
-    pub const FIELD_TTL: std::ops::Range<usize> = 8..9;
-    /// Byte range of `protocol` field
-    pub const FIELD_PROTOCOL: std::ops::Range<usize> = 9..10;
-    /// Byte range of `checksum` field
-    pub const FIELD_CHECKSUM: std::ops::Range<usize> = 10..12;
-    /// Byte range of `src` field
-    pub const FIELD_SRC: std::ops::Range<usize> = 12..16;
-    /// Byte range of `dst` field
-    pub const FIELD_DST: std::ops::Range<usize> = 16..20;
-
-    /// Ipv4 minimal header length
-    pub const MIN_HEADER_LENGTH: usize = 20;
-
     /// Create a new Ipv4 layer from the given data.
     #[inline]
-    pub fn new(data: T) -> Result<Self, IpError> {
+    pub fn new(data: T) -> Result<Self, Ipv4Error> {
         let ipv4 = unsafe { Self::new_unchecked(data) };
         ipv4.validate()?;
         Ok(ipv4)
     }
 
-    /// Create a new `Ipv4` layer from the given data without validation.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that the given data is a valid Ipv4 packet.
-    ///
-    /// If not, it may cause a panic when accessing the fields.
-    #[inline]
-    pub const unsafe fn new_unchecked(data: T) -> Self {
-        Self { data }
-    }
-
     /// Validate the inner data.
     #[inline]
-    pub fn validate(&self) -> Result<(), IpError> {
+    pub fn validate(&self) -> Result<(), Ipv4Error> {
         // Check the length of the data
         if self.data.as_ref().len() < Self::MIN_HEADER_LENGTH {
-            return Err(IpError::InvalidDataLength {
+            return Err(Ipv4Error::InvalidDataLength {
                 expected: Self::MIN_HEADER_LENGTH,
                 actual: self.data.as_ref().len(),
             });
         }
         if self.data.as_ref().len() < self.ihl().get() as usize * 4 {
-            return Err(IpError::InvalidDataLength {
+            return Err(Ipv4Error::InvalidDataLength {
                 expected: self.ihl().get() as usize * 4,
                 actual: self.data.as_ref().len(),
             });
         }
 
         #[cfg(feature = "strict")]
-        if self.version().get() != 4 {
-            return Err(IpError::InvalidVersion(self.version().get()));
+        {
+            if self.version().get() != 4 {
+                return Err(Ipv4Error::InvalidVersion(self.version().get()));
+            }
+            if self.ihl().get() < 5 {
+                return Err(Ipv4Error::InvalidIhl(self.ihl().get()));
+            }
+            // TODO: More strict checks, e.g. checksum
         }
-        #[cfg(feature = "strict")]
-        if self.ihl().get() < 5 {
-            return Err(IpError::InvalidIhl(self.ihl().get()));
-        }
-        // TODO: More strict checks, e.g. checksum
 
         Ok(())
     }
 
-    /// Get the reference to the inner data.
-    #[inline]
-    pub const fn inner(&self) -> &T {
-        &self.data
-    }
-
-    /// Version (4 bits)
-    ///
-    /// The version of the IP protocol (4).
-    pub fn version(&self) -> &Field<VersionSpec> {
-        unsafe { &*(self.data.as_ref()[Self::FIELD_VERSION].as_ptr() as *const _) }
-    }
-
-    /// Header length (4 bits)
-    pub fn ihl(&self) -> &Field<IhlSpec> {
-        unsafe { &*(self.data.as_ref()[Self::FIELD_IHL].as_ptr() as *const _) }
-    }
-
-    /// Differentiated Services Code Point (6 bits)
-    pub fn dscp(&self) -> &Field<DscpSpec> {
-        unsafe { &*(self.data.as_ref()[Self::FIELD_DSCP].as_ptr() as *const _) }
-    }
-
-    /// Explicit Congestion Notification (2 bits)
-    pub fn ecn(&self) -> &Field<EcnSpec> {
-        unsafe { &*(self.data.as_ref()[Self::FIELD_ECN].as_ptr() as *const _) }
-    }
-
-    /// Total length (16 bits)
-    pub fn total_length(&self) -> &Field<TotalLengthSpec> {
-        unsafe { &*(self.data.as_ref()[Self::FIELD_TOTAL_LENGTH].as_ptr() as *const _) }
-    }
-
-    /// Identification (16 bits)
-    pub fn identification(&self) -> &Field<IdentificationSpec> {
-        unsafe { &*(self.data.as_ref()[Self::FIELD_IDENTIFICATION].as_ptr() as *const _) }
-    }
-
-    /// Flags (3 bits)
-    pub fn flags(&self) -> &Field<FlagsSpec> {
-        unsafe { &*(self.data.as_ref()[Self::FIELD_FLAGS].as_ptr() as *const _) }
-    }
-
-    /// Fragment offset (13 bits)
-    pub fn fragment_offset(&self) -> &Field<FragmentOffsetSpec> {
-        unsafe { &*(self.data.as_ref()[Self::FIELD_FRAGMENT_OFFSET].as_ptr() as *const _) }
-    }
-
-    /// Time to live (8 bits)
-    pub fn ttl(&self) -> &Field<TtlSpec> {
-        unsafe { &*(self.data.as_ref()[Self::FIELD_TTL].as_ptr() as *const _) }
-    }
-
-    /// Protocol (8 bits)
-    pub fn protocol(&self) -> &Field<ProtocolSpec> {
-        unsafe { &*(self.data.as_ref()[Self::FIELD_PROTOCOL].as_ptr() as *const _) }
-    }
-
-    /// Header checksum (16 bits)
-    pub fn checksum(&self) -> &Field<ChecksumSpec> {
-        unsafe { &*(self.data.as_ref()[Self::FIELD_CHECKSUM].as_ptr() as *const _) }
-    }
-
-    /// Source address (32 bits)
-    pub fn src(&self) -> &Field<SrcSpec> {
-        unsafe { &*(self.data.as_ref()[Self::FIELD_SRC].as_ptr() as *const _) }
-    }
-
-    /// Destination address (32 bits)
-    pub fn dst(&self) -> &Field<DstSpec> {
-        unsafe { &*(self.data.as_ref()[Self::FIELD_DST].as_ptr() as *const _) }
-    }
-
-    /// Payload
-    pub fn payload(&self) -> &[u8] {
-        let ihl = self.ihl().get() as usize * 4;
-        &self.data.as_ref()[ihl..]
-    }
-
     /// Treat the payload as a [`Tcp`](crate::layer::tcp::Tcp) layer if the `protocol` is [`IpProtocol::Tcp`].
     #[inline]
-    pub fn tcp(&self) -> Option<crate::layer::tcp::TcpResult<crate::layer::tcp::Tcp<&[u8]>>> {
+    pub fn tcp(
+        &self,
+    ) -> Option<Result<crate::layer::tcp::Tcp<&[u8]>, crate::layer::tcp::TcpError>> {
         if self.protocol().get() == IpProtocol::Tcp {
             Some(crate::layer::tcp::Tcp::new(self.payload()))
         } else {
@@ -242,81 +180,16 @@ impl<T: AsRef<[u8]>> Ipv4<T> {
 }
 
 impl<T: AsRef<[u8]> + AsMut<[u8]>> Ipv4<T> {
-    /// Get the mutable reference to the inner data.
+    /// Treat the payload as a mutable [`Tcp`](crate::layer::tcp::Tcp) layer if the `protocol` is [`IpProtocol::Tcp`].
     #[inline]
-    pub fn inner_mut(&mut self) -> &mut T {
-        &mut self.data
-    }
-
-    /// Get the `version` field as mutable.
-    pub fn version_mut(&mut self) -> &mut Field<VersionSpec> {
-        unsafe { &mut *(self.data.as_mut()[Self::FIELD_VERSION].as_mut_ptr() as *mut _) }
-    }
-
-    /// Get the `ihl` field as mutable.
-    pub fn ihl_mut(&mut self) -> &mut Field<IhlSpec> {
-        unsafe { &mut *(self.data.as_mut()[Self::FIELD_IHL].as_mut_ptr() as *mut _) }
-    }
-
-    /// Get the `dscp` field as mutable.
-    pub fn dscp_mut(&mut self) -> &mut Field<DscpSpec> {
-        unsafe { &mut *(self.data.as_mut()[Self::FIELD_DSCP].as_mut_ptr() as *mut _) }
-    }
-
-    /// Get the `ecn` field as mutable.
-    pub fn ecn_mut(&mut self) -> &mut Field<EcnSpec> {
-        unsafe { &mut *(self.data.as_mut()[Self::FIELD_ECN].as_mut_ptr() as *mut _) }
-    }
-
-    /// Get the `total_length` field as mutable.
-    pub fn total_length_mut(&mut self) -> &mut Field<TotalLengthSpec> {
-        unsafe { &mut *(self.data.as_mut()[Self::FIELD_TOTAL_LENGTH].as_mut_ptr() as *mut _) }
-    }
-
-    /// Get the `identification` field as mutable.
-    pub fn identification_mut(&mut self) -> &mut Field<IdentificationSpec> {
-        unsafe { &mut *(self.data.as_mut()[Self::FIELD_IDENTIFICATION].as_mut_ptr() as *mut _) }
-    }
-
-    /// Get the `flags` field as mutable.
-    pub fn flags_mut(&mut self) -> &mut Field<FlagsSpec> {
-        unsafe { &mut *(self.data.as_mut()[Self::FIELD_FLAGS].as_mut_ptr() as *mut _) }
-    }
-
-    /// Get the `fragment_offset` field as mutable.
-    pub fn fragment_offset_mut(&mut self) -> &mut Field<FragmentOffsetSpec> {
-        unsafe { &mut *(self.data.as_mut()[Self::FIELD_FRAGMENT_OFFSET].as_mut_ptr() as *mut _) }
-    }
-
-    /// Get the `ttl` field as mutable.
-    pub fn ttl_mut(&mut self) -> &mut Field<TtlSpec> {
-        unsafe { &mut *(self.data.as_mut()[Self::FIELD_TTL].as_mut_ptr() as *mut _) }
-    }
-
-    /// Get the `protocol` field as mutable.
-    pub fn protocol_mut(&mut self) -> &mut Field<ProtocolSpec> {
-        unsafe { &mut *(self.data.as_mut()[Self::FIELD_PROTOCOL].as_mut_ptr() as *mut _) }
-    }
-
-    /// Get the `checksum` field as mutable.
-    pub fn checksum_mut(&mut self) -> &mut Field<ChecksumSpec> {
-        unsafe { &mut *(self.data.as_mut()[Self::FIELD_CHECKSUM].as_mut_ptr() as *mut _) }
-    }
-
-    /// Get the `src` field as mutable.
-    pub fn src_mut(&mut self) -> &mut Field<SrcSpec> {
-        unsafe { &mut *(self.data.as_mut()[Self::FIELD_SRC].as_mut_ptr() as *mut _) }
-    }
-
-    /// Get the `dst` field as mutable.
-    pub fn dst_mut(&mut self) -> &mut Field<DstSpec> {
-        unsafe { &mut *(self.data.as_mut()[Self::FIELD_DST].as_mut_ptr() as *mut _) }
-    }
-
-    /// Get the payload as mutable.
-    pub fn payload_mut(&mut self) -> &mut [u8] {
-        let ihl = self.ihl().get() as usize * 4;
-        &mut self.data.as_mut()[ihl..]
+    pub fn tcp_mut(
+        &mut self,
+    ) -> Option<Result<crate::layer::tcp::Tcp<&mut [u8]>, crate::layer::tcp::TcpError>> {
+        if self.protocol().get() == IpProtocol::Tcp {
+            Some(crate::layer::tcp::Tcp::new(self.payload_mut()))
+        } else {
+            None
+        }
     }
 
     /// Treat the payload as a mutable [`Udp`](crate::layer::udp::Udp) layer if the `protocol` is [`IpProtocol::Udp`].
@@ -330,95 +203,6 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Ipv4<T> {
             None
         }
     }
-}
-
-/// Default implementation for `Ipv4`
-///
-/// # Panics
-///
-/// This method may panic if `T` does not have enough length and cannot pass the
-/// [`validate`](Ipv4::validate) check.
-///
-/// Use `[u8; 20]` will not panic.
-///
-/// ```
-/// # use rpcap_packet::layer::ip::v4::Ipv4;
-/// let ipv4: Ipv4<[u8; 20]> = Ipv4::default();
-/// ```
-///
-/// Use `Vec<u8>` will panic.
-///
-/// ```should_panic
-/// # use rpcap_packet::layer::ip::v4::Ipv4;
-/// let ipv4: Ipv4<Vec<u8>> = Ipv4::default();
-/// ```
-impl<T> Default for Ipv4<T>
-where
-    T: AsRef<[u8]> + AsMut<[u8]> + Default,
-{
-    fn default() -> Self {
-        let mut ipv4 = unsafe { Self::new_unchecked(T::default()) };
-        ipv4.version_mut().set(4);
-        ipv4.ihl_mut().set(5);
-        ipv4.validate().unwrap();
-        ipv4
-    }
-}
-
-impl<T> AsRef<[u8]> for Ipv4<T>
-where
-    T: AsRef<[u8]>,
-{
-    fn as_ref(&self) -> &[u8] {
-        self.data.as_ref()
-    }
-}
-
-impl<T> AsMut<[u8]> for Ipv4<T>
-where
-    T: AsRef<[u8]> + AsMut<[u8]>,
-{
-    fn as_mut(&mut self) -> &mut [u8] {
-        self.data.as_mut()
-    }
-}
-
-impl<T> AsRef<T> for Ipv4<T>
-where
-    T: AsRef<[u8]>,
-{
-    fn as_ref(&self) -> &T {
-        self.inner()
-    }
-}
-
-impl<T> AsMut<T> for Ipv4<T>
-where
-    T: AsRef<[u8]> + AsMut<[u8]>,
-{
-    fn as_mut(&mut self) -> &mut T {
-        self.inner_mut()
-    }
-}
-
-/// Create a new `Ipv4` layer
-#[macro_export]
-macro_rules! ipv4 {
-    ($($field:ident : $value:expr),* $(,)?) => {
-        ipv4!(20, $($field : $value),*)
-    };
-
-    ($length:expr, $($field:ident : $value:expr),* $(,)?) => {
-        || -> Result<$crate::layer::ip::Ipv4<[u8; $length]>, $crate::layer::ip::IpError> {
-            let mut eth: $crate::layer::ip::Ipv4<[u8; $length]> = $crate::layer::ip::Ipv4::default();
-            paste::paste! {
-                $(
-                    eth.[< $field _mut >]().set($value);
-                )*
-            }
-            Ok(eth)
-        }()
-    };
 }
 
 #[cfg(test)]
